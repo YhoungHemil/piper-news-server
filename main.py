@@ -11,6 +11,17 @@ logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 
+@app.route('/health', methods=['GET'])
+def health():
+    import subprocess, shutil
+    piper_path = shutil.which('piper')
+    return {
+        "status": "alive",
+        "piper_found": piper_path is not None,
+        "piper_path": piper_path,
+        "voices_dir_writable": os.access(VOICES_DIR, os.W_OK)
+    }
+    
 # CHANGED: use writable /tmp directory
 VOICES_DIR = "/tmp/voices"
 os.makedirs(VOICES_DIR, exist_ok=True)
@@ -113,13 +124,3 @@ if __name__ == "__main__":
     logger.info("Starting server on port 5000")
     app.run(host="0.0.0.0", port=5000)
 
-@app.route('/health', methods=['GET'])
-def health():
-    import subprocess, shutil
-    piper_path = shutil.which('piper')
-    return {
-        "status": "alive",
-        "piper_found": piper_path is not None,
-        "piper_path": piper_path,
-        "voices_dir_writable": os.access(VOICES_DIR, os.W_OK)
-    }
