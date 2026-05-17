@@ -1,13 +1,16 @@
-FROM python:3.10-slim
-
-RUN pip install --no-cache-dir flask flask-cors onnxruntime numpy requests
-
-RUN mkdir -p /voices /tmp/piper_models
-WORKDIR /app
-COPY main.py /app/main.py
-
-RUN useradd -u 10014 -m choreouser && chown -R choreouser:choreouser /app /voices /tmp/piper_models
-USER 10014
-
-EXPOSE 5000
-CMD ["python", "/app/main.py"]
+schemaVersion: 1.2
+componentId: piper-news-server
+version: 1.0.0
+type: service
+build:
+  type: docker
+  dockerfilePath: ./Dockerfile
+endpoints:
+  - name: piper-tts-port
+    displayName: Piper TTS API
+    service:
+      basePath: /
+      port: 5000          # ← This is present and correct
+    type: REST
+    networkVisibilities:
+      - Public
