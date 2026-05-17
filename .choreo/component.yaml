@@ -8,9 +8,8 @@ build:
 endpoints:
   - name: piper-tts-port
     displayName: Piper TTS API
-    service:
-      basePath: /
-      port: 5000
+    http:
+      basePath: /api
     type: REST
     networkVisibilities:
       - Public
