@@ -1,36 +1,38 @@
-# Stage 1: Borrow the pre-compiled binary layers from Rhasspy
-FROM rhasspy/piper:latest AS piper_source
-
-# Stage 2: Build our actual web container
 FROM python:3.10-slim
 
-# Copy the exact system binaries and missing libraries into the system paths
-COPY --from=piper_source /piper/piper /usr/local/bin/piper
-COPY --from=piper_source /piper/lib* /usr/local/lib/
+# Install system utilities needed to fetch and unpack the binary archive
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    tar \
+    bzip2 \
+    && rm -rf /var/lib/apt/lists/*
 
-# Refresh the system's dynamic linker cache so it detects the new libraries
-RUN ldconfig
-
-# Install only basic python web tools (No compilation needed)
+# Install the basic Python web server framework
 RUN pip install --no-cache-dir flask
 
-# Create a data directory for your voices
+# Download the standalone pre-compiled AMD64 Linux Linux Piper binary package archive directly from the source repository releases
+RUN curl -L "https://github.com" -o /tmp/piper.tar.gz && \
+    tar -xf /tmp/piper.tar.gz -C /usr/local/ && \
+    rm /tmp/piper.tar.gz
+
+# Create a permanent data directory for your voice models
 RUN mkdir -p /voices
 
-# Download your voice models safely during build time
-ADD https://huggingface.co /voices/en_US-lessac-medium.onnx
-ADD https://huggingface.co.json /voices/en_US-lessac-medium.onnx.json
-ADD https://huggingface.co /voices/es_ES-sharvard-medium.onnx
-ADD https://huggingface.co.json /voices/es_ES-sharvard-medium.onnx.json
+# Download English and Spanish Voice Models during compilation safely
+RUN curl -L "https://huggingface.co" -o /voices/en_US-lessac-medium.onnx && \
+    curl -L "https://huggingface.co.json" -o /voices/en_US-lessac-medium.onnx.json
 
-# Set full read/write permissions
+RUN curl -L "https://huggingface.co" -o /voices/es_ES-sharvard-medium.onnx && \
+    curl -L "https://huggingface.co.json" -o /voices/es_ES-sharvard-medium.onnx.json
+
+# Grant complete access permissions to the voice assets directory
 RUN chmod -R 777 /voices
 
-# Copy your backend engine
+# Copy the execution execution application script files
 WORKDIR /app
 COPY main.py /app/main.py
 
-# REQUIRED BY CHOREO SECURITY: Switch to an unprivileged user ID
+# REQUIRED BY CHOREO SECURITY: Create unprivileged user
 RUN useradd -u 10014 -m choreouser
 RUN chown -R choreouser:choreouser /app /voices
 USER 10014
