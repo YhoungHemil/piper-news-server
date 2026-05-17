@@ -1,5 +1,13 @@
 FROM rhasspy/piper:latest
-   RUN mkdir -p /voices
-   # Securely fetch optimized, real-time medium quality voice profiles into Koyeb during buildADD https://huggingface.co /voices/en_US-lessac-medium.onnxADD https://huggingface.co.json /voices/en_US-lessac-medium.onnx.jsonADD https://huggingface.co /voices/es_ES-sharvard-medium.onnxADD https://huggingface.co.json /voices/es_ES-sharvard-medium.onnx.json
-   EXPOSE 5000
-   ENTRYPOINT ["/run.sh"]CMD ["--model", "/voices/en_US-lessac-medium.onnx", "--model", "/voices/es_ES-sharvard-medium.onnx", "--port", "5000"]
+
+RUN mkdir -p /voices
+
+# Download ONLY ONE medium-quality English voice model to protect Render's 512MB RAM limit
+ADD https://huggingface.co /voices/en_US-lessac-medium.onnx
+ADD https://huggingface.co.json /voices/en_US-lessac-medium.onnx.json
+
+EXPOSE 5000
+
+ENTRYPOINT ["/run.sh"]
+# Only point the active configuration command boot-up sequence to the single loaded model
+CMD ["--model", "/voices/en_US-lessac-medium.onnx", "--port", "5000"]
