@@ -1,11 +1,3 @@
 componentId: piper-news-server
 version: 1.0.0
 type: service
-build:
-  type: docker
-  dockerfilePath: ./Dockerfile
-ports:
-  - name: tts-port
-    port: 5000
-    protocol: http
-    type: public
