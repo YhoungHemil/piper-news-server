@@ -1,26 +1,24 @@
 FROM python:3.10-slim
 
-# Install flask and piper text-to-speech bindings
-RUN pip install --no-cache-dir flask piper-tts
+# Install the Python wrapper version of Piper TTS and requests directly
+RUN pip install --no-cache-dir flask piper-tts requests
 
-# Create a permanent internal directory for your voice models
+# Create a data directory for your voices
 RUN mkdir -p /voices
 
-# Download voice assets safely during build-time (safe from runtime firewalls)
-ADD https://huggingface.co /voices/en_US-lessac-medium.onnx
-ADD https://huggingface.co.json /voices/en_US-lessac-medium.onnx.json
-ADD https://huggingface.co /voices/es_ES-sharvard-medium.onnx
-ADD https://huggingface.co.json /voices/es_ES-sharvard-medium.onnx.json
-
-# Set up the execution application workspace
+# Create a clean app working directory
 WORKDIR /app
+
+# Copy the main.py file from your repository root into the container image
 COPY main.py /app/main.py
 
-# REQUIRED BY CHOREO SECURITY: Create unprivileged user and fix directory access
+# REQUIRED BY CHOREO SECURITY: Create unprivileged user and assign directory permissions
 RUN useradd -u 10014 -m choreouser
 RUN chown -R choreouser:choreouser /app /voices
 USER 10014
 
+# Open the proxy routing network port
 EXPOSE 5000
 
+# Execute the application
 CMD ["python", "/app/main.py"]
