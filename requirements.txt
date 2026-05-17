@@ -1,3 +1,5 @@
 flask
-piper-tts
+flask-cors
+onnxruntime
+numpy
 requests
