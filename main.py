@@ -21,8 +21,8 @@ def tts():
         
     model_path = os.path.join(VOICES_DIR, model_name)
     
-    # Run the native system executable compiled binary
-    cmd = ["/usr/local/bin/piper", "--model", model_path, "--output_raw"]
+    # Run the extracted standalone linux piper engine binary directly
+    cmd = ["/usr/local/piper/piper", "--model", model_path, "--output_raw"]
     
     try:
         proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
@@ -33,3 +33,4 @@ def tts():
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)
+    
