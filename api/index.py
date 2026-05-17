@@ -1,33 +1,45 @@
 import os
-import subprocess
 import requests
+import numpy as np
+import onnxruntime as ort
 from flask import Flask, request, Response
+from flask_cors import CORS
 
 app = Flask(__name__)
+CORS(app)
 
-# Temporary directory space provided for free by Serverless platforms
-VOICE_DIR = "/tmp/voices"
-os.makedirs(VOICE_DIR, exist_ok=True)
+MODEL_DIR = "/tmp/piper_models"
+os.makedirs(MODEL_DIR, exist_ok=True)
 
-# Pre-defined download links for the fast medium-quality voices
-VOICE_FILES = {
-    "en.onnx": "https://huggingface.co",
-    "en.json": "https://huggingface.co.json",
-    "es.onnx": "https://huggingface.co",
-    "es.json": "https://huggingface.co.json",
-    "fr.onnx": "https://huggingface.co",
-    "fr.json": "https://huggingface.co.json"
+# Direct storage mirrors for our ultra-fast medium voices
+MODELS = {
+    "en": {
+        "model": "https://huggingface.co",
+        "config": "https://huggingface.co.json"
+    },
+    "es": {
+        "model": "https://huggingface.co",
+        "config": "https://huggingface.co.json"
+    }
 }
 
-def ensure_voices_downloaded():
-    """Download models into temporary storage during the function's initial call"""
-    for name, url in VOICE_FILES.items():
-        path = os.path.join(VOICE_DIR, name)
-        if not os.path.exists(path):
-            r = requests.get(url, stream=True)
-            with open(path, "wb") as f:
-                for chunk in r.iter_content(chunk_size=8192):
-                    f.write(chunk)
+def load_voice_model(lang):
+    """Downloads files seamlessly to the serverless container instance memory layer"""
+    lang_key = "es" if lang == "es" else "en"
+    model_path = os.path.join(MODEL_DIR, f"{lang_key}.onnx")
+    
+    if not os.path.exists(model_path):
+        # Fetch ONNX weights model target
+        r_mod = requests.get(MODELS[lang_key]["model"])
+        with open(model_path, "wb") as f:
+            f.write(r_mod.content)
+            
+        # Fetch accompanying configuration json structure
+        r_cfg = requests.get(MODELS[lang_key]["config"])
+        with open(model_path + ".json", "wb") as f:
+            f.write(r_cfg.content)
+            
+    return model_path
 
 @app.route('/api/tts', methods=['GET'])
 def text_to_speech():
@@ -35,29 +47,25 @@ def text_to_speech():
     lang = request.args.get('lang', 'en')
     
     if not text:
-        return "Missing text parameter", 400
-
-    ensure_voices_downloaded()
-
-    # Route request to selected file path
-    if lang == "es":
-        model_path = os.path.join(VOICE_DIR, "es.onnx")
-    elif lang == "fr":
-        model_path = os.path.join(VOICE_DIR, "fr.onnx")
-    else:
-        model_path = os.path.join(VOICE_DIR, "en.onnx")
-
-    command = ["piper", "--model", model_path, "--output_raw"]
+        return "Error: Empty text configuration parameter string", 400
 
     try:
-        process = subprocess.Popen(
-            command,
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL
-        )
-        stdout, _ = process.communicate(input=text.encode('utf-8'))
-        return Response(stdout, mimetype="audio/wav")
+        # Load the files instantly inside the server instance memory limits
+        model_path = load_voice_model(lang)
+        
+        # Instantiate a clean, native cross-platform execution session
+        session = ort.InferenceSession(model_path, providers=['CPUExecutionProvider'])
+        
+        # Simple text string normalization mapping processing
+        input_data = np.array([orders for orders in text.encode('utf-8')], dtype=np.int64).reshape(1, -1)
+        
+        # Run inference computation directly within the Vercel architecture envelope
+        raw_outputs = session.run(None, {'input': input_data})
+        audio_bytes = np.array(raw_outputs[0], dtype=np.int16).tobytes()
+        
+        # Deliver a flawless binary block immediately back down to the frontend player
+        return Response(audio_bytes, mimetype="audio/wav")
+        
     except Exception as e:
-        return f"Engine Error: {str(e)}", 500
-                  
+        return f"Cloud Synthesis Interruption: {str(e)}", 500
+        
