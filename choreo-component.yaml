@@ -1,3 +1,16 @@
+schemaVersion: 1.2
 componentId: piper-news-server
 version: 1.0.0
 type: service
+build:
+  type: docker
+  dockerfilePath: ./Dockerfile
+endpoints:
+  - name: piper-tts-port
+    displayName: Piper TTS API
+    service:
+      basePath: /
+      port: 5000
+    type: REST
+    networkVisibilities:
+      - Public
