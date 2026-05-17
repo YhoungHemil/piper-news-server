@@ -1,24 +1,38 @@
 FROM python:3.10-slim
 
-# Install the Python wrapper version of Piper TTS and requests directly
+# Install the real piper command-line binary and its audio dependency
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    wget \
+    ca-certificates \
+    libsndfile1 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Download and install piper binary (Linux x86_64)
+RUN wget -q https://github.com/rhasspy/piper/releases/download/v1.2.0/piper_amd64.tar.gz && \
+    tar -xzf piper_amd64.tar.gz && \
+    mv piper/piper /usr/local/bin/ && \
+    rm -rf piper piper_amd64.tar.gz
+
+# Install Python dependencies (piper-tts is still needed for Python bindings)
 RUN pip install --no-cache-dir flask piper-tts requests
 
-# Create a data directory for your voices
+# Create voice directory
 RUN mkdir -p /voices
 
-# Create a clean app working directory
+# Set working directory
 WORKDIR /app
 
-# Copy the main.py file from your repository root into the container image
+# Copy your main.py
 COPY main.py /app/main.py
 
-# REQUIRED BY CHOREO SECURITY: Create unprivileged user and assign directory permissions
-RUN useradd -u 10014 -m choreouser
-RUN chown -R choreouser:choreouser /app /voices
+# Create unprivileged user (as you originally had)
+RUN useradd -u 10014 -m choreouser && \
+    chown -R choreouser:choreouser /app /voices
+
 USER 10014
 
-# Open the proxy routing network port
+# Expose port 5000
 EXPOSE 5000
 
-# Execute the application
+# Run the application
 CMD ["python", "/app/main.py"]
