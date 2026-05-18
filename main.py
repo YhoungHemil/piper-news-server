@@ -1,32 +1,15 @@
 import os
 import subprocess
 import requests
-import sys
-import logging
 from flask import Flask, request, Response
-
-# Force logging to stdout
-logging.basicConfig(stream=sys.stdout, level=logging.INFO)
-logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 
-@app.route('/health', methods=['GET'])
-def health():
-    import subprocess, shutil
-    piper_path = shutil.which('piper')
-    return {
-        "status": "alive",
-        "piper_found": piper_path is not None,
-        "piper_path": piper_path,
-        "voices_dir_writable": os.access(VOICES_DIR, os.W_OK)
-    }
-    
-# CHANGED: use writable /tmp directory
+# CHANGED: use writable /tmp directory (fixes read-only error)
 VOICES_DIR = "/tmp/voices"
 os.makedirs(VOICES_DIR, exist_ok=True)
 
-# REAL direct download URLs (working as of 2025)
+# REAL working Hugging Face URLs (updated from placeholders)
 VOICE_URLS = {
     "en_US-lessac-medium.onnx": "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/lessac/medium/en_US-lessac-medium.onnx",
     "en_US-lessac-medium.onnx.json": "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/lessac/medium/en_US-lessac-medium.onnx.json",
@@ -41,86 +24,57 @@ def download_if_missing(model_name):
     onnx_path = os.path.join(VOICES_DIR, model_name)
     json_path = onnx_path + ".json"
     
-    logger.info(f"Checking model: {model_name}")
-    
     # Download ONNX file
     if not os.path.exists(onnx_path):
-        url = VOICE_URLS.get(model_name)
-        if not url:
-            raise Exception(f"No URL defined for {model_name}")
-        logger.info(f"Downloading {model_name} from {url}...")
-        r = requests.get(url, stream=True, timeout=60)
+        print(f"Downloading {model_name}...", flush=True)
+        r = requests.get(VOICE_URLS[model_name], stream=True)
         r.raise_for_status()
         with open(onnx_path, "wb") as f:
             for chunk in r.iter_content(chunk_size=8192):
                 f.write(chunk)
-        logger.info(f"Downloaded {model_name}")
-    
-    # Download JSON config
-    json_key = model_name + ".json"
+                
+    # Download JSON configuration file
     if not os.path.exists(json_path):
-        url = VOICE_URLS.get(json_key)
-        if not url:
-            raise Exception(f"No URL defined for {json_key}")
-        logger.info(f"Downloading {json_key}...")
-        r = requests.get(url, stream=True, timeout=60)
+        json_key = model_name + ".json"
+        print(f"Downloading {json_key}...", flush=True)
+        r = requests.get(VOICE_URLS[json_key], stream=True)
         r.raise_for_status()
         with open(json_path, "wb") as f:
             for chunk in r.iter_content(chunk_size=8192):
                 f.write(chunk)
-        logger.info(f"Downloaded {json_key}")
 
 @app.route("/api/tts", methods=["GET"])
 def tts():
     text = request.args.get("text", "")
     lang = request.args.get("lang", "en")
     
-    logger.info(f"Request: text='{text[:50]}', lang='{lang}'")
-    
-    if not text:
+    if not text: 
         return "Missing text", 400
         
-    if lang == "es":
+    if lang == "es": 
         model_name = "es_ES-sharvard-medium.onnx"
-    elif lang == "fr":
+    elif lang == "fr": 
         model_name = "fr_FR-siwis-medium.onnx"
-    else:
+    else: 
         model_name = "en_US-lessac-medium.onnx"
-    
+        
+    # Download the voice file right before generating audio
     try:
         download_if_missing(model_name)
     except Exception as e:
-        logger.error(f"Download failed: {e}")
         return f"Model download error: {str(e)}", 500
     
     model_path = os.path.join(VOICES_DIR, model_name)
     cmd = ["piper", "--model", model_path, "--output_raw"]
     
     try:
-        proc = subprocess.Popen(
-            cmd,
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE
-        )
+        proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         stdout, stderr = proc.communicate(input=text.encode("utf-8"))
-        
         if proc.returncode != 0:
-            error_msg = stderr.decode('utf-8', errors='replace')
-            logger.error(f"Piper error (code {proc.returncode}): {error_msg}")
-            return f"Piper error: {error_msg}", 500
-        
-        logger.info(f"Generated {len(stdout)} bytes")
+            return f"Piper error: {stderr.decode()}", 500
         return Response(stdout, mimetype="audio/wav")
-        
-    except FileNotFoundError:
-        logger.error("Piper binary not found")
-        return "Engine Error: Piper binary missing", 500
     except Exception as e:
-        logger.exception("Unexpected error")
         return f"Engine Error: {str(e)}", 500
 
 if __name__ == "__main__":
-    logger.info("Starting server on port 5000")
     app.run(host="0.0.0.0", port=5000)
-
