@@ -1,15 +1,15 @@
 import os
 import subprocess
 import requests
+import sys
 from flask import Flask, request, Response
 
 app = Flask(__name__)
 
-# CHANGED: use writable /tmp directory (fixes read-only error)
 VOICES_DIR = "/tmp/voices"
 os.makedirs(VOICES_DIR, exist_ok=True)
 
-# REAL working Hugging Face URLs (updated from placeholders)
+# Real Hugging Face URLs (working)
 VOICE_URLS = {
     "en_US-lessac-medium.onnx": "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/lessac/medium/en_US-lessac-medium.onnx",
     "en_US-lessac-medium.onnx.json": "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/lessac/medium/en_US-lessac-medium.onnx.json",
@@ -19,50 +19,43 @@ VOICE_URLS = {
     "fr_FR-siwis-medium.onnx.json": "https://huggingface.co/rhasspy/piper-voices/resolve/main/fr/fr_FR/siwis/medium/fr_FR-siwis-medium.onnx.json"
 }
 
-def download_if_missing(model_name):
-    """Downloads the model files on demand if they aren't present"""
+def download_file(url, dest_path):
+    """Download a file with streaming"""
+    print(f"Downloading {dest_path}...", flush=True)
+    r = requests.get(url, stream=True, timeout=120)
+    r.raise_for_status()
+    with open(dest_path, "wb") as f:
+        for chunk in r.iter_content(chunk_size=8192):
+            f.write(chunk)
+    print(f"Downloaded {dest_path}", flush=True)
+
+def ensure_model(model_name):
+    """Ensure model file exists, download if missing"""
     onnx_path = os.path.join(VOICES_DIR, model_name)
     json_path = onnx_path + ".json"
-    
-    # Download ONNX file
     if not os.path.exists(onnx_path):
-        print(f"Downloading {model_name}...", flush=True)
-        r = requests.get(VOICE_URLS[model_name], stream=True)
-        r.raise_for_status()
-        with open(onnx_path, "wb") as f:
-            for chunk in r.iter_content(chunk_size=8192):
-                f.write(chunk)
-                
-    # Download JSON configuration file
+        download_file(VOICE_URLS[model_name], onnx_path)
     if not os.path.exists(json_path):
-        json_key = model_name + ".json"
-        print(f"Downloading {json_key}...", flush=True)
-        r = requests.get(VOICE_URLS[json_key], stream=True)
-        r.raise_for_status()
-        with open(json_path, "wb") as f:
-            for chunk in r.iter_content(chunk_size=8192):
-                f.write(chunk)
+        download_file(VOICE_URLS[model_name + ".json"], json_path)
 
-@app.route("/api/tts", methods=["GET"])
+# PRE-DOWNLOAD ALL MODELS AT STARTUP (avoids timeout on first request)
+for lang_model in ["en_US-lessac-medium.onnx", "es_ES-sharvard-medium.onnx", "fr_FR-siwis-medium.onnx"]:
+    ensure_model(lang_model)
+
+@app.route('/api/tts', methods=['GET'])
 def tts():
-    text = request.args.get("text", "")
-    lang = request.args.get("lang", "en")
+    text = request.args.get('text', '')
+    lang = request.args.get('lang', 'en')
     
-    if not text: 
+    if not text:
         return "Missing text", 400
         
-    if lang == "es": 
+    if lang == "es":
         model_name = "es_ES-sharvard-medium.onnx"
-    elif lang == "fr": 
+    elif lang == "fr":
         model_name = "fr_FR-siwis-medium.onnx"
-    else: 
+    else:
         model_name = "en_US-lessac-medium.onnx"
-        
-    # Download the voice file right before generating audio
-    try:
-        download_if_missing(model_name)
-    except Exception as e:
-        return f"Model download error: {str(e)}", 500
     
     model_path = os.path.join(VOICES_DIR, model_name)
     cmd = ["piper", "--model", model_path, "--output_raw"]
@@ -76,5 +69,10 @@ def tts():
     except Exception as e:
         return f"Engine Error: {str(e)}", 500
 
+@app.route('/health', methods=['GET'])
+def health():
+    return {"status": "ok", "models": os.listdir(VOICES_DIR)}
+
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000)
+    print("Starting Flask server on port 5000", flush=True)
+    app.run(host="0.0.0.0", port=5000, threaded=True)
